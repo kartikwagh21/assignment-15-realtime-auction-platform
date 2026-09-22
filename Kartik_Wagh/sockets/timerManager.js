@@ -1,5 +1,5 @@
 /**
- * Timer Manager - Server-side authoritative countdown clock & synchronizer
+ * Timer Manager - Server-side authoritative countdown clock & multi-lot synchronizer
  */
 
 function startAuctionTimer(io, auction, auctions) {
@@ -34,14 +34,36 @@ function startAuctionTimer(io, auction, auctions) {
       const winner = auction.highestBidder ? auction.highestBidder.username : "No Bids (Reserve Unmet)";
       const finalPrice = auction.currentBid;
 
-      console.log(`[AUCTION ENDED] Room: ${auction.id} | Winner: ${winner} | Final Price: ₹${finalPrice.toLocaleString()}`);
+      console.log(`[AUCTION ENDED] Lot: ${auction.id} | Winner: ${winner} | Final Price: ₹${finalPrice.toLocaleString('en-IN')}`);
+
+      // Finalize wallet settlement if won
+      if (auction.highestBidder && auction.highestBidder.socketId) {
+        const { socketRegistry } = require("./auctionEngine");
+        if (socketRegistry) {
+          const winnerRecord = socketRegistry.get(auction.highestBidder.socketId);
+          if (winnerRecord) {
+            winnerRecord.totalWallet -= finalPrice;
+            winnerRecord.activeHoldAmount = Math.max(0, winnerRecord.activeHoldAmount - finalPrice);
+
+            io.to(auction.highestBidder.socketId).emit("wallet:update", {
+              total: winnerRecord.totalWallet,
+              available: winnerRecord.availableWallet,
+              held: winnerRecord.activeHoldAmount,
+              message: `🎉 Congratulations! You won ${auction.title} for ₹${finalPrice.toLocaleString('en-IN')}. Settlement completed.`
+            });
+          }
+        }
+      }
 
       // Broadcast auction:sold to the entire room
       io.to(auction.id).emit("auction:sold", {
         auctionId: auction.id,
+        lotTitle: auction.title,
+        lotNumber: auction.lotNumber,
         winner: winner,
         finalPrice: finalPrice,
-        status: "ended"
+        status: "ended",
+        nextAuctionId: auction.nextAuctionId
       });
     }
   }, 1000);

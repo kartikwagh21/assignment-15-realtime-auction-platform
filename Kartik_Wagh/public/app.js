@@ -1,16 +1,19 @@
 /**
- * AURELIA LIVE BIDDING FLOOR - Client Socket Controller
+ * AURELIA LIVE BIDDING FLOOR - Multi-Lot Client Socket Controller
  * Pure Socket.io bidirectional event handler & Web Audio sound engine
  */
 
-// Deployment-ready: connect to current window origin (no hardcoded host/port)
+// Connect to window origin (deployment-ready, no hardcoded host/port)
 const socket = io();
 
 // State
 let currentAuctionId = "AUC_VINTAGE_99";
+let nextAuctionId = "AUC_ROLEX_100";
 let currentUser = {
   username: "",
-  wallet: 200000
+  totalWallet: 200000,
+  availableWallet: 200000,
+  heldWallet: 0
 };
 let currentItem = null;
 let currentBid = 50000;
@@ -19,7 +22,7 @@ let highestBidder = null;
 let auctionStatus = "active";
 let soundEnabled = false;
 
-// Audio Synthesizer (Web Audio API - zero external assets)
+// Web Audio API Synthesizer
 let audioCtx = null;
 
 function getAudioContext() {
@@ -40,23 +43,20 @@ function playSound(type) {
   try {
     const ctx = getAudioContext();
     if (!ctx) return;
-
     const now = ctx.currentTime;
 
     if (type === "bid") {
-      // Pleasant rising 2-tone chime
       const osc1 = ctx.createOscillator();
       const osc2 = ctx.createOscillator();
       const gain = ctx.createGain();
 
       osc1.type = "sine";
       osc2.type = "triangle";
-
-      osc1.frequency.setValueAtTime(587.33, now); // D5
-      osc1.frequency.exponentialRampToValueAtTime(880, now + 0.15); // A5
+      osc1.frequency.setValueAtTime(587.33, now);
+      osc1.frequency.exponentialRampToValueAtTime(880, now + 0.15);
 
       osc2.frequency.setValueAtTime(880, now + 0.05);
-      osc2.frequency.exponentialRampToValueAtTime(1174.66, now + 0.25); // D6
+      osc2.frequency.exponentialRampToValueAtTime(1174.66, now + 0.25);
 
       gain.gain.setValueAtTime(0.08, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
@@ -71,13 +71,12 @@ function playSound(type) {
       osc2.stop(now + 0.35);
 
     } else if (type === "outbid") {
-      // Urgent double warning tone
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
 
       osc.type = "sawtooth";
-      osc.frequency.setValueAtTime(440, now); // A4
-      osc.frequency.setValueAtTime(370, now + 0.12); // F#4
+      osc.frequency.setValueAtTime(440, now);
+      osc.frequency.setValueAtTime(370, now + 0.12);
       osc.frequency.setValueAtTime(440, now + 0.24);
 
       gain.gain.setValueAtTime(0.12, now);
@@ -90,7 +89,6 @@ function playSound(type) {
       osc.stop(now + 0.45);
 
     } else if (type === "snipe") {
-      // Sci-fi energizing pulse
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
 
@@ -108,7 +106,6 @@ function playSound(type) {
       osc.stop(now + 0.35);
 
     } else if (type === "gavel") {
-      // Low impact hammer strike
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
 
@@ -126,11 +123,11 @@ function playSound(type) {
       osc.stop(now + 0.5);
     }
   } catch (err) {
-    console.warn("Audio playback exception:", err);
+    console.warn("Audio error:", err);
   }
 }
 
-// DOM References
+// DOM Elements
 const elements = {
   userModal: document.getElementById("userModal"),
   joinForm: document.getElementById("joinForm"),
@@ -139,16 +136,28 @@ const elements = {
   userNameDisplay: document.getElementById("userNameDisplay"),
   userInitial: document.getElementById("userInitial"),
   walletDisplay: document.getElementById("walletDisplay"),
+  walletHoldTag: document.getElementById("walletHoldTag"),
   viewerCountDisplay: document.getElementById("viewerCountDisplay"),
   soundToggleBtn: document.getElementById("soundToggleBtn"),
   soundIcon: document.getElementById("soundIcon"),
   resetAuctionBtn: document.getElementById("resetAuctionBtn"),
+  lotCatalogSelect: document.getElementById("lotCatalogSelect"),
   
   // Lot Dossier
+  lotNumberDisplay: document.getElementById("lotNumberDisplay"),
+  lotCategoryDisplay: document.getElementById("lotCategoryDisplay"),
   lotTitle: document.getElementById("lotTitle"),
   lotDescription: document.getElementById("lotDescription"),
   startingPriceDisplay: document.getElementById("startingPriceDisplay"),
   minIncrementDisplay: document.getElementById("minIncrementDisplay"),
+  conditionDisplay: document.getElementById("conditionDisplay"),
+  lotWatermark: document.getElementById("lotWatermark"),
+  
+  // SVGs
+  svgGuitar: document.getElementById("svgGuitar"),
+  svgWatch: document.getElementById("svgWatch"),
+  svgCar: document.getElementById("svgCar"),
+  svgDiamond: document.getElementById("svgDiamond"),
   
   // Desk & Clock
   auctionStatusBadge: document.getElementById("auctionStatusBadge"),
@@ -173,7 +182,10 @@ const elements = {
   bidFeedbackNotice: document.getElementById("bidFeedbackNotice"),
   
   // Shortcuts
-  quickBidBtns: document.querySelectorAll(".quick-bid-btn"),
+  incBtn1: document.getElementById("incBtn1"),
+  incBtn2: document.getElementById("incBtn2"),
+  incBtn3: document.getElementById("incBtn3"),
+  incBtn4: document.getElementById("incBtn4"),
   
   // Ledger
   bidHistoryList: document.getElementById("bidHistoryList"),
@@ -189,9 +201,12 @@ const elements = {
   
   // Sold Modal
   soldModal: document.getElementById("soldModal"),
+  soldLotNumberTag: document.getElementById("soldLotNumberTag"),
   soldTitle: document.getElementById("soldTitle"),
   soldHammerPrice: document.getElementById("soldHammerPrice"),
   soldWinnerName: document.getElementById("soldWinnerName"),
+  settlementMessage: document.getElementById("settlementMessage"),
+  nextLotBtn: document.getElementById("nextLotBtn"),
   soldCloseBtn: document.getElementById("soldCloseBtn")
 };
 
@@ -225,12 +240,64 @@ function showToast(message, type = "info", duration = 4000) {
   }, duration);
 }
 
+function updateWalletUI(walletData) {
+  if (!walletData) return;
+  currentUser.totalWallet = walletData.total || currentUser.totalWallet;
+  currentUser.availableWallet = typeof walletData.available === "number" ? walletData.available : currentUser.availableWallet;
+  currentUser.heldWallet = typeof walletData.held === "number" ? walletData.held : 0;
+
+  elements.walletDisplay.textContent = formatCurrency(currentUser.availableWallet);
+
+  if (currentUser.heldWallet > 0) {
+    elements.walletHoldTag.textContent = `${formatCurrency(currentUser.heldWallet)} Active Hold`;
+    elements.walletHoldTag.classList.remove("hidden");
+  } else {
+    elements.walletHoldTag.classList.add("hidden");
+  }
+}
+
+function updateLotArtwork(itemType, lotNumber) {
+  elements.svgGuitar.classList.add("hidden");
+  elements.svgWatch.classList.add("hidden");
+  elements.svgCar.classList.add("hidden");
+  elements.svgDiamond.classList.add("hidden");
+
+  if (itemType === "watch") {
+    elements.svgWatch.classList.remove("hidden");
+  } else if (itemType === "car") {
+    elements.svgCar.classList.remove("hidden");
+  } else if (itemType === "diamond") {
+    elements.svgDiamond.classList.remove("hidden");
+  } else {
+    elements.svgGuitar.classList.remove("hidden");
+  }
+
+  elements.lotWatermark.textContent = lotNumber ? lotNumber.split(" ")[0] + " " + lotNumber.split(" ")[1] : "LOT #99";
+}
+
+function updateQuickShortcuts() {
+  const inc = minIncrement || 2000;
+  const mults = [inc, inc * 2, inc * 5, inc * 10];
+
+  const buttons = [elements.incBtn1, elements.incBtn2, elements.incBtn3, elements.incBtn4];
+  buttons.forEach((btn, index) => {
+    const val = mults[index];
+    btn.dataset.inc = val;
+    btn.textContent = `+${formatCurrency(val)}`;
+    btn.onclick = () => {
+      const newTarget = currentBid + val;
+      elements.bidAmountInput.value = newTarget;
+      elements.bidBtnAmount.textContent = formatCurrency(newTarget);
+      elements.bidAmountInput.focus();
+    };
+  });
+}
+
 function recalculateBidInputs() {
   const minRequired = currentBid + minIncrement;
   elements.minRequiredBidLabel.textContent = `Min ${formatCurrency(minRequired)}`;
   elements.bidAmountInput.min = minRequired;
   
-  // If input is empty or below minimum, set to minimum
   const val = Number(elements.bidAmountInput.value);
   if (!val || val < minRequired) {
     elements.bidAmountInput.value = minRequired;
@@ -239,16 +306,7 @@ function recalculateBidInputs() {
     elements.bidBtnAmount.textContent = formatCurrency(val);
   }
 
-  // Update shortcut buttons
-  elements.quickBidBtns.forEach((btn) => {
-    const inc = Number(btn.dataset.inc);
-    btn.onclick = () => {
-      const newTarget = currentBid + inc;
-      elements.bidAmountInput.value = newTarget;
-      elements.bidBtnAmount.textContent = formatCurrency(newTarget);
-      elements.bidAmountInput.focus();
-    };
-  });
+  updateQuickShortcuts();
 }
 
 function updatePriceDisplay(amount, bidder) {
@@ -259,7 +317,7 @@ function updatePriceDisplay(amount, bidder) {
   
   // Price pulse animation
   elements.priceTickerBox.classList.remove("price-flash");
-  void elements.priceTickerBox.offsetWidth; // Trigger reflow
+  void elements.priceTickerBox.offsetWidth;
   elements.priceTickerBox.classList.add("price-flash");
 
   if (bidder) {
@@ -267,7 +325,6 @@ function updatePriceDisplay(amount, bidder) {
     if (isMe) {
       elements.highestBidderDisplay.innerHTML = `${bidder.username} <span class="you-tag">YOU (Leading)</span>`;
       elements.highestBidderDisplay.className = "leader-value you-lead";
-      // Hide outbid banner if we are leading
       elements.outbidBanner.classList.add("hidden");
     } else {
       elements.highestBidderDisplay.textContent = bidder.username;
@@ -285,7 +342,7 @@ function renderBidHistory(bidHistory) {
   if (!bidHistory || bidHistory.length === 0) {
     elements.bidHistoryList.innerHTML = `
       <div class="empty-ledger-state" id="emptyLedger">
-        <span>No bids placed yet. Be the first to place an opening bid!</span>
+        <span>No bids placed yet for this lot. Be the first to place an opening bid!</span>
       </div>
     `;
     elements.bidCountBadge.textContent = "0 Bids Placed";
@@ -325,14 +382,26 @@ function renderBidHistory(bidHistory) {
 socket.on("auction:init", (data) => {
   console.log("[SOCKET: auction:init]", data);
   currentItem = data.item;
+  currentAuctionId = data.item.id;
+  nextAuctionId = data.item.nextAuctionId || "AUC_VINTAGE_99";
   auctionStatus = data.item.status;
   minIncrement = data.item.minIncrement || 2000;
 
+  // Sync Lot selector
+  if (elements.lotCatalogSelect) {
+    elements.lotCatalogSelect.value = data.item.id;
+  }
+
   elements.lotTitle.textContent = data.item.title;
   elements.lotDescription.textContent = data.item.description;
+  elements.lotNumberDisplay.textContent = data.item.lotNumber || "LOT 99 OF 120";
+  elements.lotCategoryDisplay.textContent = data.item.category || "COLLECTOR ITEM";
   elements.startingPriceDisplay.textContent = formatCurrency(data.item.startingPrice);
   elements.minIncrementDisplay.textContent = formatCurrency(data.item.minIncrement);
+  elements.conditionDisplay.textContent = data.item.condition || "Collector Grade";
 
+  updateLotArtwork(data.item.itemType, data.item.lotNumber);
+  updateWalletUI(data.userWallet);
   updatePriceDisplay(data.item.currentBid, data.item.highestBidder);
   renderBidHistory(data.bidHistory || []);
 
@@ -348,10 +417,10 @@ socket.on("auction:init", (data) => {
 });
 
 // 2. Server 1-Second Time Tick
-socket.on("auction:time_tick", ({ timeRemaining }) => {
+socket.on("auction:time_tick", ({ auctionId, timeRemaining }) => {
+  if (auctionId && auctionId !== currentAuctionId) return;
   elements.timerSeconds.textContent = formatTimer(timeRemaining);
 
-  // Anti-Snipe Warning visual pulse under 15 seconds
   if (timeRemaining < 15 && timeRemaining > 0) {
     elements.countdownWidget.classList.add("warning-pulse");
     elements.antiSnipeTag.style.display = "block";
@@ -367,7 +436,9 @@ socket.on("user:joined", ({ username, totalViewers }) => {
 
 // 4. Successful Bid Placement Broadcast
 socket.on("bid:success", (data) => {
+  if (data.auctionId && data.auctionId !== currentAuctionId) return;
   console.log("[SOCKET: bid:success]", data);
+  
   updatePriceDisplay(data.currentBid, data.highestBidder);
   renderBidHistory(data.bidHistory);
   
@@ -383,17 +454,12 @@ socket.on("bid:success", (data) => {
 socket.on("bid:outbid", ({ message }) => {
   console.log("[SOCKET: bid:outbid TARGETED]", message);
   
-  // Show outbid banner
   elements.outbidMessage.textContent = message;
   elements.outbidBanner.classList.remove("hidden");
 
-  // Show outbid error toast
   showToast(message, "error", 6000);
-  
-  // Sound alarm
   playSound("outbid");
 
-  // Set quick reclaim button
   elements.quickReclaimBtn.onclick = () => {
     const minRequired = currentBid + minIncrement;
     elements.bidAmountInput.value = minRequired;
@@ -418,12 +484,11 @@ socket.on("bid:rejected", ({ reason }) => {
 });
 
 // 7. Anti-Snipe Extension Broadcast
-socket.on("auction:extended", ({ timeRemaining, message }) => {
+socket.on("auction:extended", ({ auctionId, timeRemaining, message }) => {
+  if (auctionId && auctionId !== currentAuctionId) return;
   console.log("[SOCKET: auction:extended]", message);
   
   elements.timerSeconds.textContent = formatTimer(timeRemaining);
-  
-  // Visual flash on timer
   elements.countdownWidget.classList.add("extended-flash");
   setTimeout(() => elements.countdownWidget.classList.remove("extended-flash"), 1500);
 
@@ -439,16 +504,52 @@ socket.on("auction:extended", ({ timeRemaining, message }) => {
 });
 
 // 8. Auction Sold / Concluded Broadcast
-socket.on("auction:sold", ({ winner, finalPrice }) => {
-  console.log("[SOCKET: auction:sold]", { winner, finalPrice });
+socket.on("auction:sold", ({ auctionId, lotTitle, lotNumber, winner, finalPrice, nextAuctionId: nextId }) => {
+  if (auctionId && auctionId !== currentAuctionId) return;
+  console.log("[SOCKET: auction:sold]", { winner, finalPrice, nextId });
+  
   setAuctionEndedState(winner, finalPrice);
   playSound("gavel");
 
-  elements.soldTitle.textContent = currentItem ? currentItem.title : "1967 Vintage Fender Stratocaster";
+  elements.soldLotNumberTag.textContent = `${lotNumber || 'LOT'} • AUCTION CONCLUDED`;
+  elements.soldTitle.textContent = lotTitle || (currentItem ? currentItem.title : "Auction Lot");
   elements.soldHammerPrice.textContent = `Final Sold Price: ${formatCurrency(finalPrice)}`;
   elements.soldWinnerName.textContent = winner;
+
+  const isWinner = winner && winner.toLowerCase() === currentUser.username.toLowerCase();
+  if (isWinner) {
+    elements.settlementMessage.textContent = `🎉 Congratulations ${currentUser.username}! You won this lot. Settlement of ${formatCurrency(finalPrice)} has been finalized from your wallet.`;
+  } else {
+    elements.settlementMessage.textContent = `Lot successfully knocked down to ${winner}. Any active bid holds have been released back to your available balance.`;
+  }
+
+  nextAuctionId = nextId || "AUC_VINTAGE_99";
+  elements.nextLotBtn.onclick = () => {
+    switchLot(nextAuctionId);
+    elements.soldModal.classList.add("hidden");
+  };
+
   elements.soldModal.classList.remove("hidden");
 });
+
+// 9. Real-Time Dynamic Wallet Update
+socket.on("wallet:update", (walletData) => {
+  console.log("[SOCKET: wallet:update]", walletData);
+  updateWalletUI(walletData);
+  if (walletData.message) {
+    showToast(walletData.message, "info", 4000);
+  }
+});
+
+function switchLot(targetLotId) {
+  currentAuctionId = targetLotId;
+  socket.emit("auction:join", {
+    auctionId: targetLotId,
+    username: currentUser.username,
+    simulatedWallet: currentUser.totalWallet
+  });
+  showToast(`Switched saleroom to Lot: ${targetLotId}`, "info", 2000);
+}
 
 function setAuctionEndedState(winner, finalPrice) {
   auctionStatus = "ended";
@@ -456,7 +557,10 @@ function setAuctionEndedState(winner, finalPrice) {
   elements.auctionStatusText.textContent = "AUCTION CONCLUDED";
   elements.placeBidBtn.disabled = true;
   elements.bidAmountInput.disabled = true;
-  elements.quickBidBtns.forEach((btn) => (btn.disabled = true));
+  elements.incBtn1.disabled = true;
+  elements.incBtn2.disabled = true;
+  elements.incBtn3.disabled = true;
+  elements.incBtn4.disabled = true;
   elements.outbidBanner.classList.add("hidden");
 }
 
@@ -466,7 +570,10 @@ function resetAuctionActiveState() {
   elements.auctionStatusText.textContent = "LIVE BIDDING";
   elements.placeBidBtn.disabled = false;
   elements.bidAmountInput.disabled = false;
-  elements.quickBidBtns.forEach((btn) => (btn.disabled = false));
+  elements.incBtn1.disabled = false;
+  elements.incBtn2.disabled = false;
+  elements.incBtn3.disabled = false;
+  elements.incBtn4.disabled = false;
   elements.soldModal.classList.add("hidden");
   elements.countdownWidget.classList.remove("warning-pulse");
   recalculateBidInputs();
@@ -475,6 +582,11 @@ function resetAuctionActiveState() {
 // -------------------------------------------------------------
 // UI Event Handlers
 // -------------------------------------------------------------
+
+// Catalog Dropdown Switcher
+elements.lotCatalogSelect.addEventListener("change", (e) => {
+  switchLot(e.target.value);
+});
 
 // Bid Input Dynamic Calculation
 elements.bidAmountInput.addEventListener("input", (e) => {
@@ -487,7 +599,7 @@ elements.bidForm.addEventListener("submit", (e) => {
   e.preventDefault();
   
   if (auctionStatus !== "active") {
-    showToast("This auction round has ended. Click 'Reset Lot' at the top right to start a new round.", "error");
+    showToast("This auction round has ended. Click 'Reset Lot' or 'PROCEED TO NEXT LOT'.", "error");
     return;
   }
 
@@ -497,13 +609,13 @@ elements.bidForm.addEventListener("submit", (e) => {
     return;
   }
 
-  // Pre-check simulated wallet balance
-  if (amount > currentUser.wallet) {
-    showToast(`Cannot place bid of ${formatCurrency(amount)}. Simulated wallet balance is only ${formatCurrency(currentUser.wallet)}.`, "error");
+  // Pre-check available balance
+  if (amount > currentUser.availableWallet + (highestBidder && highestBidder.username.toLowerCase() === currentUser.username.toLowerCase() ? currentBid : 0)) {
+    showToast(`Cannot place bid of ${formatCurrency(amount)}. Available wallet is ${formatCurrency(currentUser.availableWallet)}.`, "error");
     return;
   }
 
-  console.log(`[CLIENT] Placing bid of ₹${amount} in ${currentAuctionId}`);
+  console.log(`[CLIENT] Placing bid of ₹${amount} on ${currentAuctionId}`);
 
   // Emit bid:place to server
   socket.emit("bid:place", {
@@ -537,12 +649,11 @@ elements.soundToggleBtn.addEventListener("click", () => {
   }
 });
 
-// Reset Auction Demo Helper (Instant 1-click reset)
+// Reset Auction Demo Helper
 elements.resetAuctionBtn.addEventListener("click", () => {
   socket.emit("auction:restart", { auctionId: currentAuctionId });
-  showToast("Auction reset to starting state (60s round, ₹50,000 opening bid)", "info", 3000);
+  showToast("Lot reset to starting state (60s round, opening price)", "info", 3000);
 });
-
 
 // Preset Buttons in Username Modal
 document.querySelectorAll(".preset-btn").forEach((btn) => {
@@ -558,13 +669,14 @@ elements.joinForm.addEventListener("submit", (e) => {
   const wallet = Number(elements.walletPreset.value) || 200000;
 
   currentUser.username = name;
-  currentUser.wallet = wallet;
+  currentUser.totalWallet = wallet;
+  currentUser.availableWallet = wallet;
+  currentUser.heldWallet = 0;
 
   elements.userNameDisplay.textContent = name;
   elements.userInitial.textContent = name.charAt(0).toUpperCase();
-  elements.walletDisplay.textContent = formatCurrency(wallet);
+  updateWalletUI({ total: wallet, available: wallet, held: 0 });
 
-  // Hide join modal
   elements.userModal.classList.add("hidden");
 
   // Emit auction:join to server

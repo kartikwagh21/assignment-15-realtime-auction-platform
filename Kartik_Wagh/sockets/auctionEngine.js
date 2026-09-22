@@ -1,15 +1,18 @@
 /**
- * Auction Engine - Authoritative Bidding, Anti-Snipe and Outbid Alert Manager
+ * Auction Engine - Authoritative Multi-Lot Bidding, Anti-Snipe and Outbid Alert Manager
  */
 const { v4: uuidv4 } = require("uuid");
 const { startAuctionTimer, stopAuctionTimer } = require("./timerManager");
 
-// In-Memory Auction State Store
+// In-Memory Multi-Lot Auction State Store
 const auctions = {
   "AUC_VINTAGE_99": {
     id: "AUC_VINTAGE_99",
+    lotNumber: "LOT 99 OF 120",
+    category: "RARE MUSICAL INSTRUMENTS",
     title: "1967 Vintage Fender Stratocaster",
-    description: "Original sunburst finish, alder body with maple neck, authentic 1967 single-coil pickups. Certified museum-grade provenance with original hardshell case.",
+    description: "Original 3-tone sunburst nitrocellulose lacquer, select alder body with transitional maple neck, authentic 1967 hand-wound grey bottom single-coil pickups. Certified museum-grade provenance with original hardshell case.",
+    condition: "Grade 9.4 / 10 (Museum)",
     startingPrice: 50000,
     currentBid: 50000,
     highestBidder: null, // { socketId, username }
@@ -17,13 +20,69 @@ const auctions = {
     timeRemainingSeconds: 60,
     status: "active", // "upcoming", "active", "ended"
     bidHistory: [],
-    timerInterval: null
+    timerInterval: null,
+    nextAuctionId: "AUC_ROLEX_100",
+    itemType: "guitar"
+  },
+  "AUC_ROLEX_100": {
+    id: "AUC_ROLEX_100",
+    lotNumber: "LOT 100 OF 120",
+    category: "HAUTE HORLOGERIE & TIMEPIECES",
+    title: "1968 Rolex Cosmograph Daytona 'Paul Newman' Ref. 6239",
+    description: "Exotic tri-color matte white 'Panda' dial, Valjoux 722 manual-wind chronograph movement, stainless steel case with matching riveted Oyster bracelet. Complete with original box and Swiss chronometer papers.",
+    condition: "Collector Grade 9.8 / 10 (Unpolished)",
+    startingPrice: 85000,
+    currentBid: 85000,
+    highestBidder: null,
+    minIncrement: 5000,
+    timeRemainingSeconds: 60,
+    status: "active",
+    bidHistory: [],
+    timerInterval: null,
+    nextAuctionId: "AUC_SHELBY_101",
+    itemType: "watch"
+  },
+  "AUC_SHELBY_101": {
+    id: "AUC_SHELBY_101",
+    lotNumber: "LOT 101 OF 120",
+    category: "HISTORIC COMPETITION AUTOMOBILES",
+    title: "1963 Shelby Cobra 289 Factory Competition Roadster",
+    description: "Guardsman Blue with Wimbledon White Le Mans racing stripes. All-aluminum body housing original Ford 289ci Hi-Po V8 with quad Weber carburetors. Matching-numbers FIA historic racing pass.",
+    condition: "Concours d'Elegance Restoration",
+    startingPrice: 120000,
+    currentBid: 120000,
+    highestBidder: null,
+    minIncrement: 10000,
+    timeRemainingSeconds: 60,
+    status: "active",
+    bidHistory: [],
+    timerInterval: null,
+    nextAuctionId: "AUC_DIAMOND_102",
+    itemType: "car"
+  },
+  "AUC_DIAMOND_102": {
+    id: "AUC_DIAMOND_102",
+    lotNumber: "LOT 102 OF 120",
+    category: "HIGH JEWELLERY & NATURAL DIAMONDS",
+    title: "The Aurelia Vivid Pink Diamond (12.4 Carats, Type IIa)",
+    description: "Cushion-cut Fancy Vivid Pink diamond possessing natural color saturation and VVS1 clarity. Mounted in platinum and 18k rose gold with twin pear-shaped white diamond shoulders. GIA certified.",
+    condition: "Flawless Cut & Polish",
+    startingPrice: 150000,
+    currentBid: 150000,
+    highestBidder: null,
+    minIncrement: 10000,
+    timeRemainingSeconds: 60,
+    status: "active",
+    bidHistory: [],
+    timerInterval: null,
+    nextAuctionId: "AUC_VINTAGE_99",
+    itemType: "diamond"
   }
 };
 
 // Viewer tracking per room: Map<auctionId, Set<socketId>>
 const roomViewers = new Map();
-// Socket metadata store: Map<socketId, { username, auctionId, wallet }>
+// User registry per socket: Map<socketId, { username, wallet, activeHolds: Map<auctionId, number> }>
 const socketRegistry = new Map();
 
 function getViewerCount(auctionId) {
@@ -44,26 +103,45 @@ function initAuctionEngine(io) {
 
     // Event: auction:join
     socket.on("auction:join", ({ auctionId, username, simulatedWallet }) => {
-      const auction = auctions[auctionId || "AUC_VINTAGE_99"];
+      const targetId = auctionId || "AUC_VINTAGE_99";
+      const auction = auctions[targetId];
       if (!auction) {
         socket.emit("bid:rejected", { reason: "Requested auction does not exist." });
         return;
       }
 
-      const cleanUsername = (username && username.trim()) ? username.trim() : `Bidder_${socket.id.substring(0, 5)}`;
-      const wallet = typeof simulatedWallet === "number" ? simulatedWallet : 200000;
+      // Leave previous room if any
+      if (socket.currentAuctionId && socket.currentAuctionId !== targetId) {
+        socket.leave(socket.currentAuctionId);
+        if (roomViewers.has(socket.currentAuctionId)) {
+          roomViewers.get(socket.currentAuctionId).delete(socket.id);
+          io.to(socket.currentAuctionId).emit("user:joined", {
+            username: socket.username || "A bidder",
+            totalViewers: getViewerCount(socket.currentAuctionId)
+          });
+        }
+      }
+
+      const cleanUsername = (username && username.trim()) ? username.trim() : (socket.username || `Bidder_${socket.id.substring(0, 5)}`);
+      
+      let userRecord = socketRegistry.get(socket.id);
+      if (!userRecord) {
+        const initialWallet = typeof simulatedWallet === "number" ? simulatedWallet : 200000;
+        userRecord = {
+          username: cleanUsername,
+          totalWallet: initialWallet,
+          availableWallet: initialWallet,
+          activeHoldAmount: 0
+        };
+        socketRegistry.set(socket.id, userRecord);
+      } else if (username && username.trim()) {
+        userRecord.username = cleanUsername;
+      }
 
       socket.username = cleanUsername;
-      socket.auctionId = auction.id;
-      socket.wallet = wallet;
+      socket.currentAuctionId = auction.id;
 
-      socketRegistry.set(socket.id, {
-        username: cleanUsername,
-        auctionId: auction.id,
-        wallet: wallet
-      });
-
-      // Join socket room
+      // Join new socket room
       socket.join(auction.id);
 
       // Track viewer in room
@@ -78,17 +156,33 @@ function initAuctionEngine(io) {
       socket.emit("auction:init", {
         item: {
           id: auction.id,
+          lotNumber: auction.lotNumber,
+          category: auction.category,
           title: auction.title,
           description: auction.description,
+          condition: auction.condition,
           startingPrice: auction.startingPrice,
           currentBid: auction.currentBid,
           highestBidder: auction.highestBidder,
           minIncrement: auction.minIncrement,
-          status: auction.status
+          status: auction.status,
+          nextAuctionId: auction.nextAuctionId,
+          itemType: auction.itemType
         },
+        allLots: Object.values(auctions).map((a) => ({
+          id: a.id,
+          lotNumber: a.lotNumber,
+          title: a.title,
+          currentBid: a.currentBid,
+          status: a.status
+        })),
         bidHistory: auction.bidHistory,
         timeRemaining: auction.timeRemainingSeconds,
-        userWallet: socket.wallet
+        userWallet: {
+          total: userRecord.totalWallet,
+          available: userRecord.availableWallet,
+          held: userRecord.activeHoldAmount
+        }
       });
 
       // 2. Broadcast updated audience count to all viewers in the room (user:joined)
@@ -100,9 +194,10 @@ function initAuctionEngine(io) {
 
     // Event: bid:place
     socket.on("bid:place", ({ auctionId, amount }) => {
-      const targetAuctionId = auctionId || socket.auctionId || "AUC_VINTAGE_99";
+      const targetAuctionId = auctionId || socket.currentAuctionId || "AUC_VINTAGE_99";
       const auction = auctions[targetAuctionId];
       const username = socket.username || "Anonymous Bidder";
+      const userRecord = socketRegistry.get(socket.id);
 
       if (!auction) {
         socket.emit("bid:rejected", { reason: "Auction room not found." });
@@ -114,7 +209,7 @@ function initAuctionEngine(io) {
       // 1. Validate auction status & timer
       if (auction.status !== "active" || auction.timeRemainingSeconds <= 0) {
         socket.emit("bid:rejected", {
-          reason: "Bidding is closed. This auction has ended."
+          reason: "Bidding is closed. This auction lot has ended."
         });
         return;
       }
@@ -149,17 +244,53 @@ function initAuctionEngine(io) {
       }
 
       // 5. Check simulated wallet balance
-      if (socket.wallet !== undefined && numericAmount > socket.wallet) {
-        socket.emit("bid:rejected", {
-          reason: `Insufficient simulated balance (₹${socket.wallet.toLocaleString('en-IN')}). Cannot place bid of ₹${numericAmount.toLocaleString('en-IN')}.`
-        });
-        return;
+      if (userRecord) {
+        // Effective purchasing power = available wallet + any existing hold on this specific item
+        const previousHoldOnThisLot = (auction.highestBidder && auction.highestBidder.socketId === socket.id) ? auction.currentBid : 0;
+        const maxAffordable = userRecord.availableWallet + previousHoldOnThisLot;
+
+        if (numericAmount > maxAffordable) {
+          socket.emit("bid:rejected", {
+            reason: `Insufficient wallet balance. You have ₹${userRecord.availableWallet.toLocaleString('en-IN')} available, but this bid requires ₹${numericAmount.toLocaleString('en-IN')}.`
+          });
+          return;
+        }
       }
 
       // --- VALID BID ATOMIC EXECUTION ---
       const previousHighestBidder = auction.highestBidder;
 
-      // Update state atomically
+      // Release hold from previous highest bidder if different user
+      if (previousHighestBidder && previousHighestBidder.socketId) {
+        const prevUserRecord = socketRegistry.get(previousHighestBidder.socketId);
+        if (prevUserRecord && previousHighestBidder.socketId !== socket.id) {
+          prevUserRecord.availableWallet += auction.currentBid;
+          prevUserRecord.activeHoldAmount = Math.max(0, prevUserRecord.activeHoldAmount - auction.currentBid);
+
+          // Update previous bidder's wallet UI
+          io.to(previousHighestBidder.socketId).emit("wallet:update", {
+            total: prevUserRecord.totalWallet,
+            available: prevUserRecord.availableWallet,
+            held: prevUserRecord.activeHoldAmount,
+            message: `₹${auction.currentBid.toLocaleString('en-IN')} hold released back to your available balance.`
+          });
+        }
+      }
+
+      // Place hold on current bidder's wallet
+      if (userRecord) {
+        userRecord.availableWallet -= numericAmount;
+        userRecord.activeHoldAmount += numericAmount;
+
+        socket.emit("wallet:update", {
+          total: userRecord.totalWallet,
+          available: userRecord.availableWallet,
+          held: userRecord.activeHoldAmount,
+          message: `₹${numericAmount.toLocaleString('en-IN')} reserved for your leading bid.`
+        });
+      }
+
+      // Update auction state
       auction.currentBid = numericAmount;
       auction.highestBidder = {
         socketId: socket.id,
@@ -181,7 +312,7 @@ function initAuctionEngine(io) {
       // Unshift into bid history
       auction.bidHistory.unshift(bidRecord);
 
-      console.log(`[NEW LEADING BID] Room: ${auction.id} | Amount: ₹${numericAmount.toLocaleString('en-IN')} | Bidder: ${username}`);
+      console.log(`[NEW LEADING BID] Lot: ${auction.id} | Amount: ₹${numericAmount.toLocaleString('en-IN')} | Bidder: ${username}`);
 
       // 6. Anti-Snipe Protection: If < 15 seconds remaining, reset timer to 20 seconds
       if (auction.timeRemainingSeconds < 15) {
@@ -221,7 +352,7 @@ function initAuctionEngine(io) {
 
     // Event: auction:restart (Demo & Testing helper)
     socket.on("auction:restart", ({ auctionId }) => {
-      const targetId = auctionId || "AUC_VINTAGE_99";
+      const targetId = auctionId || socket.currentAuctionId || "AUC_VINTAGE_99";
       const auction = auctions[targetId];
       if (auction) {
         stopAuctionTimer(auction);
@@ -234,26 +365,44 @@ function initAuctionEngine(io) {
 
         console.log(`[AUCTION RESET] Room ${targetId} reset to starting conditions.`);
 
+        const userRecord = socketRegistry.get(socket.id);
+
         io.to(auction.id).emit("auction:init", {
           item: {
             id: auction.id,
+            lotNumber: auction.lotNumber,
+            category: auction.category,
             title: auction.title,
             description: auction.description,
+            condition: auction.condition,
             startingPrice: auction.startingPrice,
             currentBid: auction.currentBid,
             highestBidder: null,
             minIncrement: auction.minIncrement,
-            status: auction.status
+            status: auction.status,
+            nextAuctionId: auction.nextAuctionId,
+            itemType: auction.itemType
           },
+          allLots: Object.values(auctions).map((a) => ({
+            id: a.id,
+            lotNumber: a.lotNumber,
+            title: a.title,
+            currentBid: a.currentBid,
+            status: a.status
+          })),
           bidHistory: [],
           timeRemaining: auction.timeRemainingSeconds,
-          userWallet: socket.wallet || 200000
+          userWallet: userRecord ? {
+            total: userRecord.totalWallet,
+            available: userRecord.availableWallet,
+            held: userRecord.activeHoldAmount
+          } : { total: 200000, available: 200000, held: 0 }
         });
 
         io.to(auction.id).emit("auction:extended", {
           auctionId: auction.id,
           timeRemaining: 60,
-          message: "🔄 Auction has been reset for a new live round (60s)."
+          message: `🔄 ${auction.title} has been reset for a new live round (60s).`
         });
       }
     });
@@ -261,16 +410,16 @@ function initAuctionEngine(io) {
     // Disconnect handling
     socket.on("disconnect", () => {
       console.log(`[SOCKET DISCONNECTED] Socket ID: ${socket.id}`);
-      if (socket.auctionId && roomViewers.has(socket.auctionId)) {
-        const viewers = roomViewers.get(socket.auctionId);
+      if (socket.currentAuctionId && roomViewers.has(socket.currentAuctionId)) {
+        const viewers = roomViewers.get(socket.currentAuctionId);
         viewers.delete(socket.id);
         if (viewers.size === 0) {
-          roomViewers.delete(socket.auctionId);
+          roomViewers.delete(socket.currentAuctionId);
         }
 
-        io.to(socket.auctionId).emit("user:joined", {
+        io.to(socket.currentAuctionId).emit("user:joined", {
           username: socket.username || "A bidder",
-          totalViewers: getViewerCount(socket.auctionId)
+          totalViewers: getViewerCount(socket.currentAuctionId)
         });
       }
       socketRegistry.delete(socket.id);
@@ -280,5 +429,6 @@ function initAuctionEngine(io) {
 
 module.exports = {
   initAuctionEngine,
-  auctions
+  auctions,
+  socketRegistry
 };
