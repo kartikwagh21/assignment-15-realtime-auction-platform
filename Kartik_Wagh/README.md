@@ -153,4 +153,7 @@ The repository is pre-configured and 100% deployment-ready:
 
 ---
 
+DEPLOYMENT LINK :
+https://assignment-15-realtime-auction-platform-fpux.onrender.com/
+
 *Author: Kartik Wagh | Assignment 15: Real-Time Live Auction & Bidding Platform*
