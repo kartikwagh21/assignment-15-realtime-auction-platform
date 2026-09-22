@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AURELIA Live Auction Floor | Lot #99 - 1967 Vintage Fender Stratocaster</title>
+  <meta name="description" content="Mission-critical, low-latency live auction & real-time bidding floor engine with anti-snipe protection.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Top Floor Header Bar -->
+  <header class="trading-header">
+    <div class="header-left">
+      <div class="brand-crest">
+        <span class="crest-symbol">✦</span>
+        <span class="brand-title">AURELIA & CO.</span>
+      </div>
+      <div class="saleroom-tag">
+        <span class="live-dot pulse"></span>
+        <span class="saleroom-name">LONDON SALEROOM • LIVE BIDDING FLOOR</span>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <div class="metric-pill" id="viewerCounter">
+        <span class="metric-icon">👥</span>
+        <span class="metric-label">Floor Viewers:</span>
+        <strong id="viewerCountDisplay" class="metric-value">1</strong>
+      </div>
+
+      <div class="metric-pill wallet-pill">
+        <span class="metric-icon">💼</span>
+        <span class="metric-label">Simulated Wallet:</span>
+        <strong id="walletDisplay" class="metric-value">₹200,000</strong>
+      </div>
+
+      <div class="user-pill" id="userBadge">
+        <span class="user-avatar-initial" id="userInitial">?</span>
+        <span id="userNameDisplay" class="user-name-text">Guest</span>
+      </div>
+
+      <button id="soundToggleBtn" class="control-btn" title="Toggle audio cues" aria-label="Audio Cues Toggle">
+        <span id="soundIcon">🔇</span>
+        <span class="btn-text">Audio Off</span>
+      </button>
+
+      <button id="resetAuctionBtn" class="control-btn reset-btn" title="Reset auction room for demo/testing">
+        <span>🔄 Reset Lot</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Notification & Outbid Toast Container -->
+  <div id="toastContainer" class="toast-stream" aria-live="polite"></div>
+
+  <!-- Outbid Urgent Banner (Targeted Notification) -->
+  <div id="outbidBanner" class="outbid-banner hidden" role="alert">
+    <div class="outbid-content">
+      <div class="outbid-icon">⚠️</div>
+      <div class="outbid-text">
+        <div class="outbid-title">YOU HAVE BEEN OUTBID!</div>
+        <div id="outbidMessage" class="outbid-sub">Another bidder placed a higher authoritative bid.</div>
+      </div>
+    </div>
+    <div class="outbid-actions">
+      <button id="quickReclaimBtn" class="reclaim-btn">Reclaim Lead (+₹2k)</button>
+      <button id="dismissOutbidBtn" class="dismiss-btn">✕</button>
+    </div>
+  </div>
+
+  <!-- Main Trading Floor Layout -->
+  <main class="trading-floor-container">
+    
+    <!-- LEFT: Lot Showcase & Provenance Dossier -->
+    <section class="lot-showcase-column">
+      <div class="lot-card">
+        
+        <div class="lot-media-wrapper">
+          <!-- Lot Artwork Display with Verified Badge -->
+          <div class="lot-visual-stage">
+            <svg class="guitar-svg" viewBox="0 0 600 380" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="1967 Vintage Fender Stratocaster Illustration">
+              <defs>
+                <radialGradient id="sunburstBg" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stop-color="#3a1e0b" />
+                  <stop offset="60%" stop-color="#190e06" />
+                  <stop offset="100%" stop-color="#0a0c10" />
+                </radialGradient>
+                <linearGradient id="bodySunburst" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#d97706" />
+                  <stop offset="45%" stop-color="#92400e" />
+                  <stop offset="85%" stop-color="#1e1008" />
+                  <stop offset="100%" stop-color="#0a0502" />
+                </linearGradient>
+                <linearGradient id="chromeHw" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#f3f4f6" />
+                  <stop offset="50%" stop-color="#9ca3af" />
+                  <stop offset="100%" stop-color="#4b5563" />
+                </linearGradient>
+                <linearGradient id="pickguard" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#fdfbf7" />
+                  <stop offset="100%" stop-color="#e5dfd5" />
+                </linearGradient>
+              </defs>
+              <rect width="600" height="380" fill="url(#sunburstBg)" rx="12" />
+              <!-- Guitar Body & Neck Silhouette Representation -->
+              <g transform="translate(60, 40)">
+                <!-- Ambient Glow -->
+                <circle cx="280" cy="150" r="160" fill="#f59e0b" opacity="0.08" filter="blur(40px)" />
+                <!-- Guitar Neck -->
+                <rect x="70" y="142" width="260" height="20" rx="3" fill="#d4a373" />
+                <rect x="70" y="140" width="250" height="24" rx="2" fill="#8c5836" opacity="0.9" />
+                <!-- Frets -->
+                <g stroke="#e5e7eb" stroke-width="1.5" opacity="0.7">
+                  <line x1="90" y1="140" x2="90" y2="164" />
+                  <line x1="115" y1="140" x2="115" y2="164" />
+                  <line x1="145" y1="140" x2="145" y2="164" />
+                  <line x1="180" y1="140" x2="180" y2="164" />
+                  <line x1="220" y1="140" x2="220" y2="164" />
+                  <line x1="265" y1="140" x2="265" y2="164" />
+                  <line x1="310" y1="140" x2="310" y2="164" />
+                </g>
+                <!-- Headstock -->
+                <path d="M 40 135 C 20 135, 10 145, 20 160 C 25 170, 50 170, 70 164 L 70 140 Z" fill="#d4a373" />
+                <circle cx="32" cy="142" r="3" fill="#e5e7eb" />
+                <circle cx="44" cy="141" r="3" fill="#e5e7eb" />
+                <circle cx="56" cy="140" r="3" fill="#e5e7eb" />
+                <!-- Guitar Body Contour -->
+                <path d="M 310 130 C 310 80, 360 60, 420 70 C 470 80, 490 120, 480 155 C 470 190, 485 225, 430 240 C 370 255, 310 230, 310 175 Z" fill="url(#bodySunburst)" stroke="#3f2310" stroke-width="4" />
+                <!-- Pickguard -->
+                <path d="M 325 130 C 330 95, 365 85, 410 95 C 420 130, 410 170, 385 195 C 350 205, 325 180, 325 130 Z" fill="url(#pickguard)" opacity="0.95" />
+                <!-- Pickups -->
+                <rect x="345" y="115" width="12" height="40" rx="3" fill="#1f2937" stroke="#e5e7eb" stroke-width="1" />
+                <rect x="370" y="120" width="12" height="40" rx="3" fill="#1f2937" stroke="#e5e7eb" stroke-width="1" />
+                <rect x="395" y="125" width="12" height="40" rx="3" fill="#1f2937" stroke="#e5e7eb" stroke-width="1" />
+                <!-- Bridge -->
+                <rect x="420" y="130" width="22" height="42" rx="2" fill="url(#chromeHw)" />
+                <!-- Control Knobs -->
+                <circle cx="390" cy="180" r="7" fill="#f8fafc" stroke="#94a3b8" stroke-width="1" />
+                <circle cx="410" cy="185" r="7" fill="#f8fafc" stroke="#94a3b8" stroke-width="1" />
+                <circle cx="430" cy="190" r="7" fill="#f8fafc" stroke="#94a3b8" stroke-width="1" />
+                <!-- Jack Plate -->
+                <path d="M 455 195 C 465 190, 470 200, 460 210 Z" fill="url(#chromeHw)" />
+              </g>
+            </svg>
+            <div class="lot-watermark">LOT #99</div>
+            <div class="provenance-seal">
+              <span class="seal-icon">✓</span>
+              <span>VERIFIED PROVENANCE</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="lot-details">
+          <div class="lot-header-row">
+            <span class="lot-number">LOT 99 OF 120</span>
+            <span class="lot-category">RARE MUSICAL INSTRUMENTS</span>
+          </div>
+          
+          <h1 id="lotTitle" class="lot-title">1967 Vintage Fender Stratocaster</h1>
+          <p id="lotDescription" class="lot-description">
+            Original 3-tone sunburst nitrocellulose lacquer, select alder body with transitional maple neck, original hand-wound grey bottom single-coil pickups. Certified authentic with original 1967 black hardshell case.
+          </p>
+
+          <div class="lot-metadata-grid">
+            <div class="meta-item">
+              <span class="meta-label">Starting Price</span>
+              <strong id="startingPriceDisplay" class="meta-value tabular">₹50,000</strong>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Minimum Increment</span>
+              <strong id="minIncrementDisplay" class="meta-value tabular">₹2,000</strong>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Reserve Status</span>
+              <strong class="meta-value text-emerald">MET (No Reserve)</strong>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Condition Report</span>
+              <strong class="meta-value">Grade 9.4 / 10 (Museum)</strong>
+            </div>
+          </div>
+
+          <div class="lot-footnote">
+            <span>🛡️ Protected by Server-Side Authoritative Anti-Snipe Protocol (+20s extension on late bids).</span>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- RIGHT: Live Bidding Desk & Bid Ledger -->
+    <section class="live-desk-column">
+      
+      <!-- Live Auction Desk Card -->
+      <div class="desk-card">
+        
+        <!-- Live Status & Synchronized Countdown Clock -->
+        <div class="status-clock-header">
+          <div class="auction-status-badge" id="auctionStatusBadge">
+            <span class="status-indicator"></span>
+            <span id="auctionStatusText">LIVE BIDDING</span>
+          </div>
+
+          <!-- Server Countdown Timer -->
+          <div class="countdown-widget" id="countdownWidget">
+            <div class="timer-label-box">
+              <span class="timer-sub">TIME REMAINING</span>
+              <div class="anti-snipe-tag" id="antiSnipeTag">⚡ ANTI-SNIPE ACTIVE</div>
+            </div>
+            <div class="timer-display-group">
+              <div class="timer-value tabular" id="timerSeconds">00:60</div>
+              <span class="timer-unit">SEC</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Price Ticker Display -->
+        <div class="price-ticker-box" id="priceTickerBox">
+          <div class="ticker-header">
+            <span class="ticker-label">CURRENT HIGH BID</span>
+            <span class="ticker-currency">INR (₹)</span>
+          </div>
+          <div class="price-hero-wrapper">
+            <span class="currency-symbol">₹</span>
+            <span id="currentBidDisplay" class="price-digits tabular">50,000</span>
+          </div>
+          <div class="leader-row">
+            <span class="leader-label">Highest Bidder:</span>
+            <span id="highestBidderDisplay" class="leader-value">None (Starting Price)</span>
+          </div>
+        </div>
+
+        <!-- Anti-Snipe Notification Callout (Appears on Extension) -->
+        <div id="extensionNotice" class="extension-notice hidden">
+          <span class="extension-icon">⚡</span>
+          <span id="extensionNoticeText">Anti-Snipe Protection: Clock extended by 20s.</span>
+        </div>
+
+        <!-- Bidding Control Desk Form -->
+        <div class="bid-action-console">
+          
+          <!-- Fast Increment Shortcut Buttons -->
+          <div class="increment-shortcuts">
+            <span class="shortcuts-label">Quick Increment:</span>
+            <div class="shortcut-buttons-grid">
+              <button class="quick-bid-btn" data-inc="2000" id="incBtn2000">+₹2,000</button>
+              <button class="quick-bid-btn" data-inc="5000" id="incBtn5000">+₹5,000</button>
+              <button class="quick-bid-btn" data-inc="10000" id="incBtn10000">+₹10,000</button>
+              <button class="quick-bid-btn" data-inc="25000" id="incBtn25000">+₹25,000</button>
+            </div>
+          </div>
+
+          <!-- Bid Input & Execution -->
+          <form id="bidForm" class="bid-form">
+            <div class="bid-input-group">
+              <label for="bidAmountInput" class="bid-input-label">
+                <span>Enter Authoritative Bid:</span>
+                <span id="minRequiredBidLabel" class="min-req-tag">Min ₹52,000</span>
+              </label>
+              <div class="input-with-affix">
+                <span class="input-currency">₹</span>
+                <input 
+                  type="number" 
+                  id="bidAmountInput" 
+                  name="bidAmount" 
+                  placeholder="52000" 
+                  step="1000" 
+                  autocomplete="off"
+                  required
+                >
+              </div>
+            </div>
+
+            <button type="submit" id="placeBidBtn" class="place-bid-btn">
+              <span class="btn-glow"></span>
+              <span class="btn-content">
+                <span class="bid-btn-text">PLACE LIVE BID</span>
+                <span id="bidBtnAmount" class="bid-btn-amount">₹52,000</span>
+              </span>
+            </button>
+          </form>
+
+          <!-- Input Feedback Notice -->
+          <div id="bidFeedbackNotice" class="feedback-notice hidden" role="status"></div>
+        </div>
+
+      </div>
+
+      <!-- Real-Time Auditable Bid Ledger -->
+      <div class="ledger-card">
+        <div class="ledger-header">
+          <div class="ledger-title-group">
+            <span class="ledger-icon">📋</span>
+            <h2 class="ledger-title">Live Bid Activity Ledger</h2>
+          </div>
+          <span id="bidCountBadge" class="bid-count-badge">0 Bids Placed</span>
+        </div>
+
+        <div class="ledger-table-head">
+          <span class="col-time">Time</span>
+          <span class="col-bidder">Floor Bidder</span>
+          <span class="col-amount">Amount</span>
+          <span class="col-status">Status</span>
+        </div>
+
+        <div id="bidHistoryList" class="bid-history-stream">
+          <div class="empty-ledger-state" id="emptyLedger">
+            <span>No bids placed yet. Be the first to place an opening bid!</span>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Username Onboarding Modal (Simulated Session) -->
+  <div id="userModal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-crest">✦ AURELIA SALEROOM ✦</div>
+      <h2 class="modal-title">Enter Live Bidding Floor</h2>
+      <p class="modal-desc">
+        Welcome to the London Vintage Instruments Live Sale. Choose your bidder alias to participate in real-time authoritative bidding.
+      </p>
+
+      <form id="joinForm" class="join-form">
+        <div class="form-group">
+          <label for="usernameInput">Bidder Name / Handle:</label>
+          <input 
+            type="text" 
+            id="usernameInput" 
+            placeholder="e.g. Vikram" 
+            maxlength="24" 
+            autocomplete="name" 
+            required
+          >
+        </div>
+
+        <div class="form-group">
+          <label for="walletPreset">Simulated Wallet Balance:</label>
+          <select id="walletPreset" class="wallet-select">
+            <option value="200000">₹200,000 (Standard Collector)</option>
+            <option value="500000">₹500,000 (Premier VIP)</option>
+            <option value="1000000">₹1,000,000 (Institutional Fund)</option>
+          </select>
+        </div>
+
+        <div class="preset-usernames">
+          <span class="preset-label">Or quick pick:</span>
+          <div class="preset-pills">
+            <button type="button" class="preset-btn" data-name="Vikram">Vikram</button>
+            <button type="button" class="preset-btn" data-name="Ananya">Ananya</button>
+            <button type="button" class="preset-btn" data-name="Collector_UK">Collector_UK</button>
+            <button type="button" class="preset-btn" data-name="Viewer_C">Viewer_C</button>
+          </div>
+        </div>
+
+        <button type="submit" class="join-submit-btn">ENTER LIVE AUCTION FLOOR</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Sold / Ended Modal Overlay -->
+  <div id="soldModal" class="modal-overlay hidden">
+    <div class="modal-card sold-card">
+      <div class="gavel-icon">🔨</div>
+      <div class="sold-header-tag">LOT #99 • AUCTION CONCLUDED</div>
+      <h2 class="modal-title text-gold" id="soldTitle">1967 Vintage Fender Stratocaster</h2>
+      <p class="sold-hammer-price" id="soldHammerPrice">Final Sold Price: ₹50,000</p>
+      <div class="winner-box">
+        <span class="winner-label">Winning High Bidder:</span>
+        <strong id="soldWinnerName" class="winner-name">Vikram</strong>
+      </div>
+      <p class="sold-note">All further live bids for this guitar are locked and recorded in the audit ledger.</p>
+      <button id="soldCloseBtn" class="join-submit-btn">VIEW BID SUMMARY</button>
+    </div>
+  </div>
+
+  <!-- Socket.io client script (served automatically by Socket.io server) -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
